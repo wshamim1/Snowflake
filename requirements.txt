@@ -1,0 +1,12 @@
+# Snowflake Python Connector
+snowflake-connector-python>=3.0.0
+
+# Data manipulation
+pandas>=1.5.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Optional: For enhanced functionality
+# pyarrow>=10.0.0  # For better performance with Parquet files
+# cryptography>=41.0.0  # For secure connections
