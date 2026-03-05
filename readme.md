@@ -10,9 +10,11 @@ A complete Python-based toolkit for working with Snowflake, featuring database o
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [Python Worksheets](#python-worksheets)
+- [Snowflake Tasks (Jobs)](#snowflake-tasks-jobs)
+- [Snowpark vs PySpark](#snowpark-vs-pyspark)
 - [Examples](#examples)
 - [Security](#security)
-- [Contributing](#contributing)
 
 ## Features
 
@@ -20,6 +22,8 @@ A complete Python-based toolkit for working with Snowflake, featuring database o
 - 📊 **Interactive Notebooks**: Jupyter notebooks for data analysis (local & portable)
 - 🚀 **Streamlit Web App**: Interactive explorer with SQL runner, table management, CRUD forms, and dynamic charting
 - 📈 **Data Visualization**: Bar and pie charts with dynamic grouping and metrics
+- 🧠 **Python Worksheets**: Snowflake-native worksheet handlers with `main(session)`
+- ⏱️ **Task Automation**: Create and manage Snowflake scheduled jobs (tasks) from Python
 - 🔒 **Secure**: Environment-based credential management with .env files
 - 🛠️ **Modular**: Clean separation of concerns with reusable components
 - 🔄 **Dual-Mode Connectivity**: Works both locally (via .env) and in Snowflake-hosted environments
@@ -40,6 +44,12 @@ A complete Python-based toolkit for working with Snowflake, featuring database o
 ├── apps/
 │   ├── notebooks/
 │   │   └── quickstart.ipynb          # Jupyter notebook starter
+│   ├── python_worksheets/
+│   │   ├── sales_analysis.py         # Dual-mode worksheet script
+│   │   ├── sales_analysis_snowflake_native.py # Snowflake-native handler
+│   │   ├── snowflake_task_manager.py # Task/job automation via Python
+│   │   ├── README.md                 # Worksheets guide
+│   │   └── TASK_MANAGEMENT.md        # Task/job management guide
 │   └── streamlit/
 │       └── app.py                    # Streamlit web app
 ├── docs/                              # Documentation
@@ -160,6 +170,38 @@ jupyter notebook apps/notebooks/quickstart.ipynb
 
 Or use VS Code with the Jupyter extension.
 
+## Python Worksheets
+
+This project includes Snowflake Python worksheet-compatible scripts in [apps/python_worksheets](apps/python_worksheets):
+
+- [apps/python_worksheets/sales_analysis_snowflake_native.py](apps/python_worksheets/sales_analysis_snowflake_native.py): native worksheet script with required `main(session)` handler
+- [apps/python_worksheets/sales_analysis.py](apps/python_worksheets/sales_analysis.py): dual-mode script (Snowflake worksheet or local `.env`)
+
+For Snowflake worksheet execution, use the native script and set handler to `main`.
+
+## Snowflake Tasks (Jobs)
+
+You can create and manage Snowflake jobs (tasks) using remote Python code:
+
+```bash
+python apps/python_worksheets/snowflake_task_manager.py
+```
+
+This script can:
+- Create scheduled tasks
+- List tasks
+- Resume/suspend tasks
+- Show task execution history
+- Delete tasks
+
+See [apps/python_worksheets/TASK_MANAGEMENT.md](apps/python_worksheets/TASK_MANAGEMENT.md) for full task examples.
+
+## Snowpark vs PySpark
+
+- In Snowflake worksheets, use **Snowpark** (native and recommended).
+- Native **PySpark runtime** is not what Snowflake worksheets provide.
+- If you need real PySpark, run Spark externally and connect to Snowflake.
+
 ## Examples
 
 ### Example 1: Using the Streamlit App (Recommended)
@@ -209,6 +251,16 @@ python src/operations/update_operations.py
 
 # Delete data
 python src/operations/delete_operations.py
+```
+
+### Example 5: Run Snowflake-Native Python Worksheet
+
+Use [apps/python_worksheets/sales_analysis_snowflake_native.py](apps/python_worksheets/sales_analysis_snowflake_native.py) in Snowflake Python Worksheets with handler `main`.
+
+### Example 6: Create Scheduled Jobs (Tasks)
+
+```bash
+python apps/python_worksheets/snowflake_task_manager.py
 ```
 
 ## Security
