@@ -16,11 +16,13 @@ A complete Python-based toolkit for working with Snowflake, featuring database o
 
 ## Features
 
-- ✅ **Database Operations**: Complete CRUD operations for Snowflake
-- 📊 **Interactive Notebooks**: Jupyter notebooks for data analysis
-- 🚀 **Streamlit App**: Web-based query explorer
-- 🔒 **Secure**: Environment-based credential management
-- 🛠️ **Modular**: Clean separation of concerns
+- ✅ **Database Operations**: Complete CRUD operations (Create, Read, Update, Delete) for Snowflake
+- 📊 **Interactive Notebooks**: Jupyter notebooks for data analysis (local & portable)
+- 🚀 **Streamlit Web App**: Interactive explorer with SQL runner, table management, CRUD forms, and dynamic charting
+- 📈 **Data Visualization**: Bar and pie charts with dynamic grouping and metrics
+- 🔒 **Secure**: Environment-based credential management with .env files
+- 🛠️ **Modular**: Clean separation of concerns with reusable components
+- 🔄 **Dual-Mode Connectivity**: Works both locally (via .env) and in Snowflake-hosted environments
 
 ## Project Structure
 
@@ -92,17 +94,9 @@ A complete Python-based toolkit for working with Snowflake, featuring database o
    SNOWFLAKE_WAREHOUSE=your-warehouse
    SNOWFLAKE_DATABASE=your-database
    SNOWFLAKE_SCHEMA=your-schema
-   SNOWFLAKE_TABLE=your-table
    ```
 
-3. **Optional query configurations**:
-
-   ```env
-   SNOWFLAKE_SELECT_QUERY=SELECT * FROM TABLE1;
-   SNOWFLAKE_INSERT_QUERY=INSERT INTO TABLE1 (ID, NAME) VALUES (1, 'Test');
-   SNOWFLAKE_UPDATE_QUERY=UPDATE TABLE1 SET NAME = 'Updated' WHERE ID = 1;
-   SNOWFLAKE_DELETE_QUERY=DELETE FROM TABLE1 WHERE ID = 1;
-   ```
+   **Note**: The app auto-detects your connection (Snowflake session or local .env).
 
 ## Usage
 
@@ -142,13 +136,19 @@ python src/operations/delete_operations.py ["DELETE SQL"]
 
 ### Streamlit Application
 
-Launch the interactive query explorer:
+Launch the interactive data explorer:
 
 ```bash
 streamlit run apps/streamlit/app.py
 ```
 
 Then open your browser to `http://localhost:8501`.
+
+**Features**:
+- **Create Table Tab**: Set up the SALES_DEMO table with 12 sample records
+- **SQL Runner Tab**: Execute custom SQL queries
+- **Insert/Update/Delete Tab**: CRUD operations with forms
+- **Bar Chart Tab**: Dynamic visualization with multiple grouping options
 
 ### Jupyter Notebooks
 
@@ -162,52 +162,74 @@ Or use VS Code with the Jupyter extension.
 
 ## Examples
 
-### Example 1: Create and Query a Table
+### Example 1: Using the Streamlit App (Recommended)
 
 ```bash
-# Create table
+# Start the app
+streamlit run apps/streamlit/app.py
+
+# In the UI:
+# 1. Go to "Create Table" tab
+# 2. Click "Create / Refresh Table with Sample Data"
+# 3. Switch to other tabs to query, insert, update, delete, or visualize data
+```
+
+### Example 2: SQL Query with Streamlit
+
+In the Streamlit app's "SQL Runner" tab:
+
+```sql
+SELECT REGION, SUM(SALES_AMOUNT) as total_sales FROM SALES_DEMO GROUP BY REGION;
+```
+
+### Example 3: Interactive Analysis with Jupyter
+
+```bash
+# Start Jupyter
+jupyter notebook apps/notebooks/quickstart.ipynb
+
+# Or use the portable standalone notebook
+jupyter notebook apps/notebooks/snowflake_standalone.ipynb
+```
+
+### Example 4: Command-Line Database Operations
+
+```bash
+# Create a table
 python src/operations/create_table_operations.py my_table
 
 # Query data
-python src/operations/select_operations.py "SELECT * FROM my_table"
-```
+python src/operations/select_operations.py "SELECT * FROM my_table LIMIT 10"
 
-### Example 2: Using Environment Variables
+# Insert data
+python src/operations/insert_operations.py
 
-Set `SNOWFLAKE_SELECT_QUERY` in `.env`, then:
+# Update data
+python src/operations/update_operations.py
 
-```bash
-python src/operations/select_operations.py
-```
-
-### Example 3: Interactive Analysis
-
-```bash
-# Start Streamlit app
-streamlit run apps/streamlit/app.py
-
-# Or use Jupyter notebook
-jupyter notebook apps/notebooks/quickstart.ipynb
+# Delete data
+python src/operations/delete_operations.py
 ```
 
 ## Security
 
 ⚠️ **Important Security Notes**:
 
-- Never commit `.env` to version control
-- Use `.env.example` as a template only
-- Rotate credentials regularly
+- Never commit `.env` to version control (it's in `.gitignore`)
+- Use `.env.example` as a template for initial setup
+- Rotate Snowflake credentials regularly
 - Use least-privilege access roles in Snowflake
 - Consider using Snowflake key-pair authentication for production
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- Don't share `.env` files or expose credentials in logs
 
 ---
 
-**Need help?** Check the `docs/` folder or open an issue.
+**Quick Start**:
+
+1. Set up `.env` with your Snowflake credentials
+2. Install dependencies: `pip install -r requirements.txt`
+3. Run Streamlit: `streamlit run apps/streamlit/app.py`
+4. Click "Create Table" tab → "Create / Refresh Table with Sample Data"
+5. Explore the other tabs for SQL queries, CRUD operations, and charting
+
+**Need help?** Check the `docs/` folder or review the examples above.
