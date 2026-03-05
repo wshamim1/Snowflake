@@ -2,3 +2,6 @@ snowflake-connector-python
 python-dotenv
 streamlit
 jupyter
+notebook
+pandas
+snowflake-snowpark-python
