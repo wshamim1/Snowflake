@@ -1,6 +1,14 @@
 
+import os
+import sys
+from pathlib import Path
 from typing import Any, List, Optional
-from snowflake_connection import SnowflakeConnection
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from src.db.snowflake_connection import SnowflakeConnection
 
 class SelectOperations:
     """
@@ -37,7 +45,20 @@ class SelectOperations:
             conn.close()
 
 if __name__ == "__main__":
-    sample_query = "SELECT CURRENT_VERSION();"
+    cli_query = " ".join(sys.argv[1:]).strip()
+    env_query = os.getenv("SNOWFLAKE_SELECT_QUERY", "").strip()
+    table_name = os.getenv("SNOWFLAKE_TABLE", "").strip()
+
+    if cli_query:
+        sample_query = cli_query
+    elif env_query:
+        sample_query = env_query
+    elif table_name:
+        sample_query = f"SELECT * FROM {table_name};"
+    else:
+        sample_query = "SELECT CURRENT_VERSION();"
+        print("Tip: Set SNOWFLAKE_SELECT_QUERY in .env or pass a query via CLI.")
+
     result = SelectOperations.fetch_data(sample_query)
     if result is not None:
         print(result)

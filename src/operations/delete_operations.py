@@ -1,6 +1,15 @@
 
+import os
+import sys
+from pathlib import Path
 from typing import Optional
-from snowflake_connection import SnowflakeConnection
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from src.db.snowflake_connection import SnowflakeConnection
+
 
 class DeleteOperations:
     """
@@ -37,8 +46,25 @@ class DeleteOperations:
             conn.close()
 
 if __name__ == "__main__":
-    sample_query = "DELETE FROM your_table WHERE column2 = 'condition';"
-    success = DeleteOperations.delete_data(sample_query)
+    cli_query = " ".join(sys.argv[1:]).strip()
+    env_query = os.getenv("SNOWFLAKE_DELETE_QUERY", "").strip()
+    table_name = os.getenv("SNOWFLAKE_TABLE", "").strip()
+
+    if cli_query:
+        sample_query = cli_query
+    elif env_query:
+        sample_query = env_query
+    elif table_name:
+        print("No delete query provided.")
+        print(
+            f"Set SNOWFLAKE_DELETE_QUERY in .env, e.g.: DELETE FROM {table_name} WHERE ID = 1;"
+        )
+        sample_query = ""
+    else:
+        print("Tip: Set SNOWFLAKE_DELETE_QUERY (or SNOWFLAKE_TABLE) in .env.")
+        sample_query = ""
+
+    success = bool(sample_query) and DeleteOperations.delete_data(sample_query)
     if success:
         print("Delete successful.")
     else:

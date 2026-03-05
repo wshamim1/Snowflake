@@ -1,11 +1,13 @@
 
 import os
+from pathlib import Path
 from typing import Optional
 import snowflake.connector
 from snowflake.connector import SnowflakeConnection as SFConnection
 from dotenv import load_dotenv
 
-load_dotenv()
+ROOT_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(ROOT_DIR / ".env")
 
 class SnowflakeConnection:
     """
