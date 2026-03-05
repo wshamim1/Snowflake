@@ -1,190 +1,289 @@
 
 
-import os
-import sys
-from pathlib import Path
-from typing import Optional
-
-ROOT_DIR = Path(__file__).resolve().parents[2]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-
-from src.db.snowflake_connection import SnowflakeConnection
+from typing import Optional, List, Dict, Any, Tuple
+import pandas as pd
+from snowflake_connection import SnowflakeConnection
 
 class InsertOperations:
     """
-    Handles INSERT queries in Snowflake.
+    Handles INSERT queries in Snowflake with various input formats.
     """
+    
     @staticmethod
-    def _parse_table_name(table_name: str) -> Optional[tuple[str, str, str]]:
-        """
-        Parses table name into (database, schema, table).
-        Supported formats:
-        - table
-        - schema.table
-        - database.schema.table
-        """
-        parts = [p.strip().strip('"') for p in table_name.split(".") if p.strip()]
-        db = os.getenv("SNOWFLAKE_DATABASE", "").strip().strip('"')
-        schema = os.getenv("SNOWFLAKE_SCHEMA", "").strip().strip('"')
-
-        if len(parts) == 1:
-            if not db or not schema:
-                return None
-            return db, schema, parts[0]
-        if len(parts) == 2:
-            if not db:
-                return None
-            return db, parts[0], parts[1]
-        if len(parts) == 3:
-            return parts[0], parts[1], parts[2]
-        return None
-
-    @staticmethod
-    def _table_exists(conn, table_name: str) -> bool:
-        """
-        Checks whether the target table exists and is visible to current role.
-        """
-        parsed = InsertOperations._parse_table_name(table_name)
-        if parsed is None:
-            print(
-                "Could not resolve table name. Provide SNOWFLAKE_TABLE as table, schema.table, or database.schema.table, and ensure SNOWFLAKE_DATABASE/SNOWFLAKE_SCHEMA are set."
-            )
-            return False
-
-        database, schema, table = parsed
-        check_query = (
-            f"SELECT COUNT(*) FROM {database}.INFORMATION_SCHEMA.TABLES "
-            "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s"
-        )
-
-        cursor = conn.cursor()
-        try:
-            cursor.execute(check_query, (schema.upper(), table.upper()))
-            count = cursor.fetchone()[0]
-            return count > 0
-        except Exception as e:
-            print(f"Error checking table existence: {e}")
-            return False
-        finally:
-            cursor.close()
-
-    @staticmethod
-    def _get_table_columns(conn, table_name: str) -> list[str]:
-        """
-        Returns ordered column names for a table.
-        """
-        parsed = InsertOperations._parse_table_name(table_name)
-        if parsed is None:
-            return []
-
-        database, schema, table = parsed
-        query = (
-            f"SELECT COLUMN_NAME FROM {database}.INFORMATION_SCHEMA.COLUMNS "
-            "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s "
-            "ORDER BY ORDINAL_POSITION"
-        )
-
-        cursor = conn.cursor()
-        try:
-            cursor.execute(query, (schema.upper(), table.upper()))
-            return [row[0] for row in cursor.fetchall()]
-        except Exception:
-            return []
-        finally:
-            cursor.close()
-
-    @staticmethod
-    def get_insert_template(table_name: str) -> Optional[str]:
-        """
-        Builds a valid INSERT template based on actual table columns.
-        """
-        conn = SnowflakeConnection.get_connection()
-        if conn is None:
-            return None
-        try:
-            if not InsertOperations._table_exists(conn, table_name):
-                return None
-            columns = InsertOperations._get_table_columns(conn, table_name)
-            if not columns:
-                return None
-            column_list = ", ".join(columns)
-            values_list = ", ".join(["'<value>'" for _ in columns])
-            return f"INSERT INTO {table_name} ({column_list}) VALUES ({values_list});"
-        finally:
-            conn.close()
-
-    @staticmethod
-    def insert_data(query: str, table_name: Optional[str] = None) -> bool:
+    def insert_data(query: str, params: Optional[Dict] = None) -> bool:
         """
         Executes an INSERT query.
 
         Args:
             query (str): The SQL INSERT query to execute.
-            table_name (Optional[str]): Optional table name to validate before insert.
+            params (Optional[Dict]): Query parameters for parameterized queries.
 
         Returns:
             bool: True if the insert was successful, False otherwise.
         """
-        conn = SnowflakeConnection.get_connection()
-        if conn is None:
-            print("No connection available.")
-            return False
         try:
-            if table_name and not InsertOperations._table_exists(conn, table_name):
-                print(f"Table '{table_name}' does not exist or not authorized.")
-                return False
-
-            cursor = conn.cursor()
-            cursor.execute(query)
-            conn.commit()
-            return True
+            with SnowflakeConnection.get_connection_context() as conn:
+                cursor = conn.cursor()
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                cursor.close()
+                return True
         except Exception as e:
             print(f"Error executing insert: {e}")
             return False
-        finally:
-            try:
+
+    @staticmethod
+    def insert_single_row(
+        table_name: str,
+        data: Dict[str, Any]
+    ) -> bool:
+        """
+        Inserts a single row into a table.
+
+        Args:
+            table_name (str): Name of the table.
+            data (Dict[str, Any]): Dictionary with column names as keys and values.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        columns = ", ".join(data.keys())
+        placeholders = ", ".join([f":{key}" for key in data.keys()])
+        query = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+        
+        return InsertOperations.insert_data(query, data)
+
+    @staticmethod
+    def insert_multiple_rows(
+        table_name: str,
+        data: List[Dict[str, Any]]
+    ) -> Tuple[bool, int]:
+        """
+        Inserts multiple rows into a table using batch insert.
+
+        Args:
+            table_name (str): Name of the table.
+            data (List[Dict[str, Any]]): List of dictionaries with column names and values.
+
+        Returns:
+            Tuple[bool, int]: Success status and number of rows inserted.
+        """
+        if not data:
+            return False, 0
+        
+        try:
+            with SnowflakeConnection.get_connection_context() as conn:
+                cursor = conn.cursor()
+                
+                # Get columns from first row
+                columns = ", ".join(data[0].keys())
+                placeholders = ", ".join([f":{key}" for key in data[0].keys()])
+                query = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+                
+                # Execute batch insert
+                cursor.executemany(query, data)
+                rows_inserted = cursor.rowcount
                 cursor.close()
-            except Exception:
-                pass
-            conn.close()
+                
+                return True, rows_inserted
+        except Exception as e:
+            print(f"Error executing batch insert: {e}")
+            return False, 0
+
+    @staticmethod
+    def insert_from_dataframe(
+        table_name: str,
+        df: pd.DataFrame,
+        chunk_size: int = 10000
+    ) -> Tuple[bool, int]:
+        """
+        Inserts data from a pandas DataFrame into a table.
+
+        Args:
+            table_name (str): Name of the table.
+            df (pd.DataFrame): DataFrame containing the data.
+            chunk_size (int): Number of rows to insert per batch.
+
+        Returns:
+            Tuple[bool, int]: Success status and number of rows inserted.
+        """
+        try:
+            # Convert DataFrame to list of dictionaries
+            data = df.to_dict('records')
+            
+            total_inserted = 0
+            # Insert in chunks
+            for i in range(0, len(data), chunk_size):
+                chunk = data[i:i + chunk_size]
+                success, rows = InsertOperations.insert_multiple_rows(table_name, chunk)
+                if not success:
+                    return False, total_inserted
+                total_inserted += rows
+            
+            return True, total_inserted
+        except Exception as e:
+            print(f"Error inserting from DataFrame: {e}")
+            return False, 0
+
+    @staticmethod
+    def insert_from_select(
+        target_table: str,
+        select_query: str
+    ) -> Tuple[bool, int]:
+        """
+        Inserts data into a table from a SELECT query.
+
+        Args:
+            target_table (str): Name of the target table.
+            select_query (str): SELECT query to get data from.
+
+        Returns:
+            Tuple[bool, int]: Success status and number of rows inserted.
+        """
+        query = f"INSERT INTO {target_table} {select_query}"
+        
+        try:
+            with SnowflakeConnection.get_connection_context() as conn:
+                cursor = conn.cursor()
+                cursor.execute(query)
+                rows_inserted = cursor.rowcount
+                cursor.close()
+                return True, rows_inserted
+        except Exception as e:
+            print(f"Error executing insert from select: {e}")
+            return False, 0
+
+    @staticmethod
+    def insert_or_ignore(
+        table_name: str,
+        data: Dict[str, Any],
+        unique_columns: List[str]
+    ) -> bool:
+        """
+        Inserts a row only if it doesn't already exist based on unique columns.
+
+        Args:
+            table_name (str): Name of the table.
+            data (Dict[str, Any]): Dictionary with column names and values.
+            unique_columns (List[str]): Columns to check for uniqueness.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        # Build WHERE clause for checking existence
+        where_conditions = " AND ".join([f"{col} = :{col}" for col in unique_columns])
+        check_query = f"SELECT COUNT(*) FROM {table_name} WHERE {where_conditions}"
+        
+        try:
+            with SnowflakeConnection.get_connection_context() as conn:
+                cursor = conn.cursor()
+                
+                # Check if row exists
+                cursor.execute(check_query, {col: data[col] for col in unique_columns})
+                count = cursor.fetchone()[0]
+                
+                if count == 0:
+                    # Row doesn't exist, insert it
+                    columns = ", ".join(data.keys())
+                    placeholders = ", ".join([f":{key}" for key in data.keys()])
+                    insert_query = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+                    cursor.execute(insert_query, data)
+                
+                cursor.close()
+                return True
+        except Exception as e:
+            print(f"Error in insert_or_ignore: {e}")
+            return False
+
+    @staticmethod
+    def bulk_insert_with_staging(
+        table_name: str,
+        data: List[Dict[str, Any]],
+        stage_name: str = "@~"
+    ) -> Tuple[bool, int]:
+        """
+        Performs bulk insert using internal stage for better performance.
+
+        Args:
+            table_name (str): Name of the target table.
+            data (List[Dict[str, Any]]): List of dictionaries with data.
+            stage_name (str): Stage to use (default: user stage).
+
+        Returns:
+            Tuple[bool, int]: Success status and number of rows inserted.
+        """
+        try:
+            # Convert data to DataFrame
+            df = pd.DataFrame(data)
+            
+            with SnowflakeConnection.get_connection_context() as conn:
+                cursor = conn.cursor()
+                
+                # Use Snowflake's write_pandas for efficient bulk loading
+                from snowflake.connector.pandas_tools import write_pandas
+                
+                success, nchunks, nrows, _ = write_pandas(
+                    conn=conn,
+                    df=df,
+                    table_name=table_name,
+                    auto_create_table=False
+                )
+                
+                cursor.close()
+                return success, nrows
+        except Exception as e:
+            print(f"Error in bulk insert with staging: {e}")
+            return False, 0
 
 if __name__ == "__main__":
-    table_name = os.getenv("SNOWFLAKE_TABLE", "").strip()
-    query_from_env = os.getenv("SNOWFLAKE_INSERT_QUERY", "").strip()
-    columns_from_env = os.getenv("SNOWFLAKE_INSERT_COLUMNS", "").strip()
-    values_from_env = os.getenv("SNOWFLAKE_INSERT_VALUES", "").strip()
-
-    if query_from_env:
-        sample_query = query_from_env
-    elif table_name and columns_from_env and values_from_env:
-        columns = [c.strip() for c in columns_from_env.split(",") if c.strip()]
-        values = [v.strip() for v in values_from_env.split(",")]
-        if len(columns) != len(values):
-            print("SNOWFLAKE_INSERT_COLUMNS and SNOWFLAKE_INSERT_VALUES must have the same number of items.")
-            sample_query = ""
-        else:
-            escaped_values = ["'" + v.replace("'", "''") + "'" for v in values]
-            sample_query = (
-                f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(escaped_values)});"
-            )
-    elif table_name:
-        template = InsertOperations.get_insert_template(table_name)
-        if template:
-            print("No insert query provided.")
-            print("Use this template in SNOWFLAKE_INSERT_QUERY (or set SNOWFLAKE_INSERT_COLUMNS/SNOWFLAKE_INSERT_VALUES):")
-            print(template)
-        else:
-            print("Could not build template. Check SNOWFLAKE_TABLE and table access.")
-        sample_query = ""
-    else:
-        sample_query = "INSERT INTO your_table (column1, column2) VALUES ('value1', 'value2');"
-        print(
-            "Tip: Set SNOWFLAKE_TABLE or SNOWFLAKE_INSERT_QUERY in .env to avoid placeholder table names."
-        )
-
-    success = bool(sample_query) and InsertOperations.insert_data(sample_query, table_name=table_name or None)
-    if success:
-        print("Insert successful.")
-    else:
-        print("Insert failed.")
+    print("=== Testing Insert Operations ===\n")
+    
+    # Note: These are example tests. Adjust table names and data as needed.
+    
+    # Test 1: Single row insert
+    print("1. Testing single row insert:")
+    # Uncomment and modify for your table:
+    # success = InsertOperations.insert_single_row(
+    #     "test_table",
+    #     {"id": 1, "name": "John Doe", "email": "john@example.com"}
+    # )
+    # print(f"   Success: {success}\n")
+    print("   Skipped (modify table name and data)\n")
+    
+    # Test 2: Multiple rows insert
+    print("2. Testing multiple rows insert:")
+    # Uncomment and modify for your table:
+    # data = [
+    #     {"id": 2, "name": "Jane Smith", "email": "jane@example.com"},
+    #     {"id": 3, "name": "Bob Johnson", "email": "bob@example.com"}
+    # ]
+    # success, count = InsertOperations.insert_multiple_rows("test_table", data)
+    # print(f"   Success: {success}, Rows inserted: {count}\n")
+    print("   Skipped (modify table name and data)\n")
+    
+    # Test 3: Insert from DataFrame
+    print("3. Testing insert from DataFrame:")
+    # Uncomment and modify for your table:
+    # df = pd.DataFrame({
+    #     "id": [4, 5, 6],
+    #     "name": ["Alice", "Charlie", "David"],
+    #     "email": ["alice@example.com", "charlie@example.com", "david@example.com"]
+    # })
+    # success, count = InsertOperations.insert_from_dataframe("test_table", df)
+    # print(f"   Success: {success}, Rows inserted: {count}\n")
+    print("   Skipped (modify table name and data)\n")
+    
+    # Test 4: Insert from SELECT
+    print("4. Testing insert from SELECT:")
+    # Uncomment and modify for your tables:
+    # success, count = InsertOperations.insert_from_select(
+    #     "target_table",
+    #     "SELECT * FROM source_table WHERE condition = true"
+    # )
+    # print(f"   Success: {success}, Rows inserted: {count}\n")
+    print("   Skipped (modify table names)\n")
+    
+    print("=== Tests Complete ===")
+    print("Note: Uncomment and modify the test cases with your actual table names and data.")
